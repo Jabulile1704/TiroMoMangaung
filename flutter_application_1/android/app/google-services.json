@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "676264237837",
+    "project_id": "tiro-mo-mangaung-4ed34",
+    "storage_bucket": "tiro-mo-mangaung-4ed34.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676264237837:android:1e78108f4e637a2ded6e44",
+        "android_client_info": {
+          "package_name": "com.example.tiro_mo_mangaung"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD86q4KKpPbcUbU1gm4Olw4b25Xv17qzBU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

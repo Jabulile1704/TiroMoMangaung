@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    
+    // HELPER FUNCTIONS
+    
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isEmployer() {
+      return isSignedIn() && getUserData().userType == 'employer';
+    }
+    
+    function isJobSeeker() {
+      return isSignedIn() && getUserData().userType == 'job_seeker';
+    }
+    
+    // USERS COLLECTION
+    
+    match /users/{userId} {
+      // Anyone can read user profiles (for displaying employer/seeker info)
+      allow read: if isSignedIn();
+      
+      // Users can create their own profile during signup
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      
+      // Users can update only their own profile
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      
+      // Users can delete only their own profile
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+    
+   
+    // JOBS COLLECTION
+
+    match /jobs/{jobId} {
+      // Anyone authenticated can read jobs
+      allow read: if isSignedIn();
+      
+      // Only employers can create jobs
+      allow create: if isEmployer() && 
+                      request.resource.data.employerId == request.auth.uid;
+      
+      // Employers can update their own jobs OR anyone can increment view/application counts
+      allow update: if isSignedIn() && (
+        resource.data.employerId == request.auth.uid ||
+        // Allow anyone to increment viewCount or applicationCount only
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicationCount']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'applicationCount'])
+      );
+      
+      // Only the employer who created the job can delete it
+      allow delete: if isSignedIn() && 
+                      resource.data.employerId == request.auth.uid;
+    }
+    
+    
+    // APPLICATIONS COLLECTION
+    
+    
+    match /applications/{applicationId} {
+      // Job seekers can read their own applications
+      // Employers can read applications for their jobs
+      allow read: if isSignedIn() && (
+        resource.data.seekerId == request.auth.uid ||
+        get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.employerId == request.auth.uid
+      );
+      
+      // Only job seekers can create applications
+      allow create: if isJobSeeker() && 
+                      request.resource.data.seekerId == request.auth.uid;
+      
+      // Job seekers can update their own applications
+      // Employers can update applications for their jobs (e.g., change status)
+      allow update: if isSignedIn() && (
+        (resource.data.seekerId == request.auth.uid && isJobSeeker()) ||
+        (get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.employerId == request.auth.uid && isEmployer())
+      );
+      
+      // Only the job seeker can delete their own application
+      allow delete: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+    }
+    
+    
+    // SAVED JOBS COLLECTION
+    
+    
+    match /saved_jobs/{savedJobId} {
+      allow read: if isSignedIn() && 
+                    resource.data.seekerId == request.auth.uid;
+      
+      allow create: if isJobSeeker() && 
+                      request.resource.data.seekerId == request.auth.uid;
+      
+      allow update: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+      
+      allow delete: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+    }
+    
+    
+    // NOTIFICATIONS COLLECTION
+    // ⚠️ FIXED: Changed from seekerId/employerId to userId field
+    
+    match /notifications/{notificationId} {
+      // Users can read their own notifications (using userId field)
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Anyone authenticated can create notifications (system-generated)
+      allow create: if isSignedIn();
+      
+      // Users can update their own notifications (mark as read)
+      // Only allow updating the 'read' field for security
+      allow update: if isSignedIn() && 
+                      resource.data.userId == request.auth.uid &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      
+      // Users can delete their own notifications
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+   
+    // DOCUMENTS COLLECTION (CV, certificates, etc.)
+   
+    
+    match /documents/{documentId} {
+      // Job seekers can read their own documents
+      // Employers can read documents of applicants
+      allow read: if isSignedIn() && (
+        resource.data.seekerId == request.auth.uid ||
+        isEmployer()
+      );
+      
+      allow create: if isJobSeeker() && 
+                      request.resource.data.seekerId == request.auth.uid;
+      
+      allow update: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+      
+      allow delete: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+    }
+    
+    
+    // JOB ALERTS COLLECTION
+    
+    
+    match /job_alerts/{alertId} {
+      allow read: if isSignedIn() && 
+                    resource.data.seekerId == request.auth.uid;
+      
+      allow create: if isJobSeeker() && 
+                      request.resource.data.seekerId == request.auth.uid;
+      
+      allow update: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+      
+      allow delete: if isSignedIn() && 
+                      resource.data.seekerId == request.auth.uid;
+    }
+    
+  
+    // VERIFICATION DOCUMENTS COLLECTION
+    
+    match /verification_documents/{docId} {
+      // Employers can read/write their own verification docs
+      allow read: if isSignedIn() && 
+                    resource.data.employerId == request.auth.uid;
+      
+      allow create: if isEmployer() && 
+                      request.resource.data.employerId == request.auth.uid;
+      
+      allow update: if isSignedIn() && 
+                      resource.data.employerId == request.auth.uid;
+      
+      allow delete: if isSignedIn() && 
+                      resource.data.employerId == request.auth.uid;
+    }
+    
+   
+    // MESSAGES COLLECTION
+    
+    
+    match /messages/{messageId} {
+      // Users can read messages they sent or received
+      allow read: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      
+      // Users can send messages
+      allow create: if isSignedIn() && 
+                      request.resource.data.senderId == request.auth.uid;
+      
+      // Senders can update their own messages
+      allow update: if isSignedIn() && 
+                      resource.data.senderId == request.auth.uid;
+      
+      // Senders can delete their own messages
+      allow delete: if isSignedIn() && 
+                      resource.data.senderId == request.auth.uid;
+    }
+    
+    
+    // INTERVIEWS COLLECTION
+    
+    
+    match /interviews/{interviewId} {
+      // Both applicant and employer can read interview details
+      allow read: if isSignedIn() && (
+        get(/databases/$(database)/documents/applications/$(resource.data.applicationId)).data.seekerId == request.auth.uid ||
+        get(/databases/$(database)/documents/applications/$(resource.data.applicationId)).data.employerId == request.auth.uid
+      );
+      
+      // Employers can create interviews
+      allow create: if isSignedIn() && isEmployer();
+      
+      // Both parties can update interview (e.g., confirm attendance)
+      allow update: if isSignedIn() && (
+        get(/databases/$(database)/documents/applications/$(resource.data.applicationId)).data.seekerId == request.auth.uid ||
+        get(/databases/$(database)/documents/applications/$(resource.data.applicationId)).data.employerId == request.auth.uid
+      );
+      
+      // Only employer can delete interviews
+      allow delete: if isSignedIn() && 
+                      get(/databases/$(database)/documents/applications/$(resource.data.applicationId)).data.employerId == request.auth.uid;
+    }
+  }
+}
